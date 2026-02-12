@@ -17,7 +17,14 @@ export async function recomputeTally(proposalId: string): Promise<{
 
     votesSnapshot.forEach(doc => {
         const vote = doc.data();
-        const weight = BigInt(vote.weightRaw || '0'); // Safety fallback
+        let weight: bigint;
+        try {
+            weight = BigInt(vote.weightRaw || '0');
+        } catch {
+            console.warn(`[tally] Invalid weightRaw for vote ${doc.id}: "${vote.weightRaw}", skipping.`);
+            totalVoters--;
+            return; // skip this vote
+        }
         if (vote.choice === 'FOR') {
             totalForRaw += weight;
         } else if (vote.choice === 'AGAINST') {

@@ -30,9 +30,9 @@ export const getProposalUpdates = functions.https.onRequest(async (req, res) => 
 
         console.log(`Fetching updates for proposal: ${proposalId}`);
 
-        // 2. Query Firestore for proposal updates
-        const snapshot = await db.collection('proposalUpdates')
-            .where('proposalId', '==', proposalId)
+        // 2. Query subcollection proposals/{proposalId}/updates
+        const snapshot = await db.collection('proposals').doc(proposalId)
+            .collection('updates')
             .orderBy('createdAt', 'desc')
             .get();
 
@@ -45,21 +45,23 @@ export const getProposalUpdates = functions.https.onRequest(async (req, res) => 
             const data = doc.data() as ProposalUpdate;
             
             // Fetch author's username from users collection
-            let authorName = null;
-            try {
-                const userDoc = await db.collection('users').doc(data.authorAddress.toLowerCase()).get();
-                if (userDoc.exists) {
-                    authorName = userDoc.data()?.username || null;
+            let authorName = data.authorName || null;
+            if (!authorName) {
+                try {
+                    const userDoc = await db.collection('users').doc(data.authorAddress.toLowerCase()).get();
+                    if (userDoc.exists) {
+                        authorName = userDoc.data()?.username || null;
+                    }
+                } catch (userError) {
+                    console.warn(`Failed to fetch username for ${data.authorAddress}:`, userError);
                 }
-            } catch (userError) {
-                console.warn(`Failed to fetch username for ${data.authorAddress}:`, userError);
             }
 
             updates.push({
                 id: doc.id,
                 ...data,
                 authorName,
-                createdAt: data.createdAt.toMillis()
+                createdAt: data.createdAt?.toMillis?.() ?? data.createdAt
             });
         }
 

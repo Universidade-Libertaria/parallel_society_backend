@@ -13,6 +13,22 @@ export interface AuthResponse {
     error?: string;
 }
 
+// Legacy statuses kept for backward compatibility with existing proposals
+export type LegacyProposalStatus = 'UPCOMING' | 'ACTIVE' | 'CLOSED' | 'PASSED' | 'FAILED';
+
+// New governance lifecycle statuses
+export type GovernanceProposalStatus =
+    | 'DRAFT'
+    | 'IN_DISCUSSION'
+    | 'READY_FOR_VOTING'
+    | 'VOTING_LIVE'
+    | 'VOTING_ENDED'
+    | 'ACCEPTED'
+    | 'REJECTED'
+    | 'CANCELED';
+
+export type ProposalStatus = LegacyProposalStatus | GovernanceProposalStatus;
+
 export interface Proposal {
     id?: string;
     title: string;
@@ -23,8 +39,22 @@ export interface Proposal {
     createdAt: any;
     startTime: any;
     endTime: any;
-    status: 'UPCOMING' | 'ACTIVE' | 'CLOSED' | 'PASSED' | 'FAILED';
+    status: ProposalStatus;
 
+    // Discussion phase
+    discussionStartedAt?: any;
+    discussionEndsAt?: any;
+
+    // Cancellation
+    cancelReason?: string;
+
+    // Editing & revisions
+    isEdited?: boolean;
+    lastEditedAt?: any;
+    revisionCount?: number;
+
+    // Comments
+    commentCount?: number;
 
     // Snapshot strategy
     snapshotBlock?: number;
@@ -38,7 +68,7 @@ export interface Proposal {
 
     totalVoters: number;
     finalizedAt?: any;
-    userVotingPowerRaw?: string; // Voting power of the authenticated user at snapshot
+    userVotingPowerRaw?: string;
 
     // IPFS Pinned Artifacts
     proposalCid?: string | null;
@@ -80,10 +110,10 @@ export interface ProposalUpdate {
     id?: string;
     proposalId: string;
     authorAddress: string;
-    authorName?: string; // Enriched from users collection
+    authorName?: string;
     status: 'Planning' | 'In Progress' | 'Delayed' | 'Completed' | 'Started';
-    content: string; // Markdown text
-    createdAt: any; // Firestore Timestamp
+    content: string;
+    createdAt: any;
     attachments?: ProposalUpdateAttachment[];
 }
 
@@ -91,6 +121,7 @@ export interface ProposalUpdateAttachment {
     name: string;
     fileType: 'document' | 'image' | 'link';
     url: string;
+    size?: number;
 }
 
 export interface AddProposalUpdateRequest {
@@ -98,4 +129,73 @@ export interface AddProposalUpdateRequest {
     status: 'Planning' | 'In Progress' | 'Delayed' | 'Completed' | 'Started';
     content: string;
     attachments?: ProposalUpdateAttachment[];
+}
+
+// --- Phase 2: Comments ---
+
+export interface CommentDoc {
+    id?: string;
+    proposalId: string;
+    author: {
+        address: string;
+        displayName?: string;
+        avatarUrl?: string;
+    };
+    text: string;
+    parentId: string | null;
+    createdAt: number;
+    isHidden: boolean;
+    isEdited?: boolean;
+    lastEditedAt?: number;
+    voteUp: number;
+    voteDown: number;
+    voteScore: number;
+    replyCount: number;
+}
+
+export interface CommentVoteDoc {
+    direction: 'UP' | 'DOWN';
+    createdAt: number;
+}
+
+export interface CommentResponse {
+    id: string;
+    proposalId: string;
+    author: { address: string; displayName?: string; avatarUrl?: string };
+    createdAt: number;
+    text: string;
+    vote: { up: number; down: number; score: number };
+    replyCount: number;
+    parentId: string | null;
+    isHidden: boolean;
+    myVote: 'UP' | 'DOWN' | null;
+}
+
+export interface CommentsListResponse {
+    items: CommentResponse[];
+    nextCursor: string | null;
+    totalCount: number;
+}
+
+// --- Phase 5: Revisions ---
+
+export interface RevisionDoc {
+    id?: string;
+    proposalId: string;
+    revisionNumber: number;
+    title: string;
+    description: string;
+    changeNotes: string;
+    createdAt: number;
+    authorAddress: string;
+}
+
+// --- Phase 7: Permissions ---
+
+export interface ProposalPermissions {
+    canEdit: boolean;
+    canStartVote: boolean;
+    canCancel: boolean;
+    canComment: boolean;
+    canModerate: boolean;
 }

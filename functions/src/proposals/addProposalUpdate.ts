@@ -87,31 +87,44 @@ export const addProposalUpdate = functions.https.onRequest(async (req, res) => {
             return;
         }
 
-        // 6. Verify Proposal Status is PASSED
+        // 6. Verify Proposal Status is PASSED or ACCEPTED
         const proposalData = proposalDoc.data();
-        if (proposalData?.status !== 'PASSED') {
-            console.warn(`Proposal status is ${proposalData?.status}, not PASSED`);
+        if (proposalData?.status !== 'PASSED' && proposalData?.status !== 'ACCEPTED') {
+            console.warn(`Proposal status is ${proposalData?.status}, not PASSED/ACCEPTED`);
             res.status(400).json({ 
                 error: 'Invalid proposal status',
-                message: 'Only approved proposals (status PASSED) can receive updates',
+                message: 'Only approved proposals (status PASSED or ACCEPTED) can receive updates',
                 currentStatus: proposalData?.status
             });
             return;
         }
 
-        // 7. Create Proposal Update Object
+        // 7. Resolve author name
+        let authorName: string | undefined;
+        try {
+            const userDoc = await db.collection('users').doc(authorAddress.toLowerCase()).get();
+            if (userDoc.exists) {
+                authorName = userDoc.data()?.username;
+            }
+        } catch (e) {
+            console.warn('Failed to fetch author name:', e);
+        }
+
+        // 8. Create Proposal Update in subcollection
         const now = admin.firestore.Timestamp.now();
         const proposalUpdate: ProposalUpdate = {
             proposalId: body.proposalId,
             authorAddress: authorAddress.toLowerCase(),
+            authorName,
             status: body.status,
             content: body.content,
             createdAt: now,
             attachments: body.attachments || []
         };
 
-        console.log('Adding proposal update to Firestore...');
-        const docRef = await db.collection('proposalUpdates').add(proposalUpdate);
+        console.log('Adding proposal update to subcollection...');
+        const docRef = await db.collection('proposals').doc(body.proposalId)
+            .collection('updates').add(proposalUpdate);
         const updateId = docRef.id;
         console.log(`Proposal update created with ID: ${updateId}`);
 

@@ -119,7 +119,7 @@ export const createProposal = functions.https.onRequest(async (req, res) => {
             createdAt: now,
             startTime,
             endTime,
-            status: 'ACTIVE',
+            status: 'DRAFT',
             totalForRaw: '0',
             totalAgainstRaw: '0',
             tokenPowerVotedRaw: '0',

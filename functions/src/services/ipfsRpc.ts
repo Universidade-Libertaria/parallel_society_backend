@@ -16,7 +16,7 @@ export const ipfsRpc = {
             throw new Error('Filebase API Key (token) not configured');
         }
 
-        console.log(`[ipfsRpc] IPFS config: URL=${RPC_URL}, KeyPrefix=${API_KEY.substring(0, 5)}...`);
+        console.log(`[ipfsRpc] IPFS config: URL=${RPC_URL}, KeyConfigured=true`);
 
         const content = JSON.stringify(json);
         const formData = new FormData();
@@ -53,9 +53,8 @@ export const ipfsRpc = {
 
             return cid;
         } catch (error: any) {
-            const keyInfo = API_KEY ? `(Len: ${API_KEY.length}, Preview: ${API_KEY.substring(0, 4)}...${API_KEY.substring(API_KEY.length - 4)})` : '(MISSING)';
-            console.error(`[ipfsRpc] IPFS addJson catch ${keyInfo}:`, error.message);
-            throw new Error(`IPFS Add Failed: ${error.message}${keyInfo}`);
+            console.error(`[ipfsRpc] IPFS addJson failed:`, error.message);
+            throw new Error(`IPFS Add Failed: ${error.message}`);
         }
     },
 
@@ -69,7 +68,7 @@ export const ipfsRpc = {
 
         try {
             console.log(`[ipfsRpc] Pinning CID: ${cid}`);
-            const response = await axios.post(`${RPC_URL}/api/v0/pin/add?arg=${cid}`, null, {
+            const response = await axios.post(`${RPC_URL}/api/v0/pin/add?arg=${encodeURIComponent(cid)}`, null, {
                 headers: {
                     'Authorization': `Bearer ${API_KEY}`,
                 },

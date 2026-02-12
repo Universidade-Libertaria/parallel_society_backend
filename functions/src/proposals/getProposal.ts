@@ -1,17 +1,23 @@
 import * as functions from 'firebase-functions';
 import { db } from '../firebase';
-import { finalizeProposalIfNeeded } from '../services/finalize';
+import { resolveEffectiveStatus } from '../services/finalize';
 import { verifyAuthToken } from '../services/auth';
 import { getBalanceAtBlock } from '../services/lutBalance';
-import { Proposal } from '../types';
+import { Proposal, ProposalPermissions } from '../types';
+
+const ALLOWED_ORIGINS = (process.env.ALLOWED_ORIGINS || 'http://localhost:3000').split(',');
 
 export const getProposal = functions.https.onRequest(async (req, res) => {
-    // CORS Header
-    res.set('Access-Control-Allow-Origin', '*');
+    // CORS Header — restricted to allowed origins
+    const origin = req.headers.origin;
+    if (origin && ALLOWED_ORIGINS.includes(origin)) {
+        res.set('Access-Control-Allow-Origin', origin);
+        res.set('Access-Control-Allow-Credentials', 'true');
+    }
 
     if (req.method === 'OPTIONS') {
         res.set('Access-Control-Allow-Methods', 'GET');
-        res.set('Access-Control-Allow-Headers', 'Content-Type');
+        res.set('Access-Control-Allow-Headers', 'Authorization, Content-Type');
         res.status(204).send('');
         return;
     }
@@ -41,16 +47,25 @@ export const getProposal = functions.https.onRequest(async (req, res) => {
         }
 
         const data = doc.data() as Proposal;
-        const finalized = await finalizeProposalIfNeeded(id, data);
+        const finalized = resolveEffectiveStatus(data);
 
-        // Fetch user's vote and voting power if authenticated
+        // Fetch user's vote, voting power, and compute permissions if authenticated
         let myVote = null;
         let userVotingPowerRaw = '0';
+        let permissions: ProposalPermissions = {
+            canEdit: false,
+            canStartVote: false,
+            canCancel: false,
+            canComment: finalized.status === 'IN_DISCUSSION',
+            canModerate: false
+        };
+
         const authHeader = req.headers.authorization;
         if (authHeader) {
             try {
-                const voterAddress = await verifyAuthToken(authHeader); // returns lowercased
+                const voterAddress = await verifyAuthToken(authHeader);
                 const lowerVoterAddress = voterAddress.toLowerCase();
+                const isAuthor = lowerVoterAddress === finalized.authorAddress.toLowerCase();
 
                 // 1. Get My Vote
                 const voteDoc = await db.collection('votes').doc(`${id}_${lowerVoterAddress}`).get();
@@ -63,7 +78,6 @@ export const getProposal = functions.https.onRequest(async (req, res) => {
                 }
 
                 // 2. Get Snapshot Voting Power
-                // Use snapshotBlock from the proposal data
                 const snapshotBlock = data.snapshotBlock || 'latest';
                 try {
                     userVotingPowerRaw = await getBalanceAtBlock(lowerVoterAddress, snapshotBlock);
@@ -71,6 +85,15 @@ export const getProposal = functions.https.onRequest(async (req, res) => {
                 } catch (balanceErr: any) {
                     console.error('[getProposal] Failed to get voting power:', balanceErr.message);
                 }
+
+                // 3. Compute Permissions
+                permissions = {
+                    canEdit: ['DRAFT', 'IN_DISCUSSION'].includes(finalized.status) && isAuthor,
+                    canStartVote: finalized.status === 'READY_FOR_VOTING' && isAuthor,
+                    canCancel: ['DRAFT', 'IN_DISCUSSION'].includes(finalized.status) && isAuthor,
+                    canComment: finalized.status === 'IN_DISCUSSION',
+                    canModerate: isAuthor
+                };
 
             } catch (authError) {
                 console.warn('Silent auth failed in getProposal:', authError);
@@ -88,12 +111,16 @@ export const getProposal = functions.https.onRequest(async (req, res) => {
             id: doc.id,
             ...finalized,
             authorName,
-            createdAt: finalized.createdAt.toMillis(),
-            startTime: finalized.startTime.toMillis(),
-            endTime: finalized.endTime.toMillis(),
-            finalizedAt: finalized.finalizedAt?.toMillis() || null,
+            createdAt: finalized.createdAt?.toMillis?.() ?? finalized.createdAt,
+            startTime: finalized.startTime?.toMillis?.() ?? finalized.startTime,
+            endTime: finalized.endTime?.toMillis?.() ?? finalized.endTime,
+            finalizedAt: finalized.finalizedAt?.toMillis?.() ?? finalized.finalizedAt ?? null,
+            discussionStartedAt: finalized.discussionStartedAt?.toMillis?.() ?? finalized.discussionStartedAt ?? null,
+            discussionEndsAt: finalized.discussionEndsAt?.toMillis?.() ?? finalized.discussionEndsAt ?? null,
+            lastEditedAt: finalized.lastEditedAt?.toMillis?.() ?? finalized.lastEditedAt ?? null,
             myVote,
-            userVotingPowerRaw
+            userVotingPowerRaw,
+            permissions
         });
     } catch (error: any) {
         console.error('Error getting proposal:', error);

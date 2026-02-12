@@ -1,11 +1,17 @@
 import * as functions from 'firebase-functions';
 import { db } from '../firebase';
-import { finalizeProposalIfNeeded } from '../services/finalize';
+import { resolveEffectiveStatus } from '../services/finalize';
 import { Proposal } from '../types';
 
+const ALLOWED_ORIGINS = (process.env.ALLOWED_ORIGINS || 'http://localhost:3000').split(',');
+
 export const listProposals = functions.https.onRequest(async (req, res) => {
-    // CORS Header
-    res.set('Access-Control-Allow-Origin', '*');
+    // CORS Header — restricted to allowed origins
+    const origin = req.headers.origin;
+    if (origin && ALLOWED_ORIGINS.includes(origin)) {
+        res.set('Access-Control-Allow-Origin', origin);
+        res.set('Access-Control-Allow-Credentials', 'true');
+    }
 
     if (req.method === 'OPTIONS') {
         res.set('Access-Control-Allow-Methods', 'GET');
@@ -49,8 +55,8 @@ export const listProposals = functions.https.onRequest(async (req, res) => {
             }));
         }
 
-        const proposals = await Promise.all(rawProposals.map(async p => {
-            const finalized = await finalizeProposalIfNeeded(p.id!, p);
+        const proposals = rawProposals.map(p => {
+            const finalized = resolveEffectiveStatus(p);
 
             return {
                 id: p.id,
@@ -68,7 +74,7 @@ export const listProposals = functions.https.onRequest(async (req, res) => {
                 totalVoters: finalized.totalVoters || 0,
                 tokenPowerVotedRaw: finalized.tokenPowerVotedRaw || '0'
             };
-        }));
+        });
 
         res.status(200).json(proposals);
     } catch (error: any) {
