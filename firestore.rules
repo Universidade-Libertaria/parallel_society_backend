@@ -17,21 +17,46 @@ service cloud.firestore {
       allow write: if false; // Only Admin SDK (backend)
     }
 
-    // Phase 2: Proposals collection
+    // Proposals collection
     match /proposals/{proposalId} {
       allow read: if true; // Public listing
       allow write: if false; // Managed by backend functions
+
+      // Comments subcollection
+      match /comments/{commentId} {
+        allow read: if true; // Public
+        allow write: if false; // Managed by backend functions
+
+        // Comment votes subcollection
+        match /votes/{voterId} {
+          allow read: if true;
+          allow write: if false; // Managed by backend functions
+        }
+      }
+
+      // Revisions subcollection
+      match /revisions/{revisionId} {
+        allow read: if true; // Public
+        allow write: if false; // Managed by backend functions
+      }
+
+      // Implementation updates subcollection
+      match /updates/{updateId} {
+        allow read: if true; // Public
+        allow write: if false; // Managed by backend functions
+      }
     }
+
+    // Legacy proposalUpdates (top-level, read-only for backward compatibility)
     match /proposalUpdates/{updateId} {
-      // Anyone can read
       allow read: if true;
-      
-      // Only authenticated users can create
-      // (LUT balance validation happens in Cloud Function)
-      allow create: if request.auth != null;
-      
-      // No updates or deletes (immutable updates)
-      allow update, delete: if false;
+      allow write: if false; // No more writes to legacy collection
+    }
+
+    // Reports collection (for comment moderation)
+    match /reports/{reportId} {
+      allow read: if false; // Admin only
+      allow write: if false; // Managed by backend functions
     }
   }
 }
