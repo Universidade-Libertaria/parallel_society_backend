@@ -2,7 +2,7 @@ import * as functions from 'firebase-functions';
 import { db } from '../firebase';
 import { verifyAuthToken } from '../services/auth';
 import { getLUTBalance, provider } from '../services/lutBalance';
-import { CreateProposalRequest, Proposal } from '../types';
+import { CreateProposalRequest, Proposal, ProposalCategory, PROPOSAL_CATEGORIES } from '../types';
 import * as admin from 'firebase-admin';
 import { verifyProposalSignature, EIP712_DOMAIN, EIP712_TYPES, ProposalMessage } from '../services/eip712';
 import { ipfsRpc } from '../services/ipfsRpc';
@@ -65,6 +65,18 @@ export const createProposal = functions.https.onRequest(async (req, res) => {
         if (!body.title || !body.category || !body.description || !body.signature || !body.messageHash || !body.timestamp || !body.snapshotBlock) {
             console.warn('Missing required fields');
             res.status(400).json({ error: 'Missing required fields (including signature/hash/timestamp)' });
+            return;
+        }
+
+        const isValidCategory = (value: any): value is ProposalCategory =>
+            typeof value === 'string' && PROPOSAL_CATEGORIES.includes(value as ProposalCategory);
+
+        if (!isValidCategory(body.category)) {
+            console.warn(`Invalid category provided: ${body.category}`);
+            res.status(400).json({
+                error: 'Invalid category',
+                message: `Category '${body.category}' is not allowed. Allowed categories are: ${PROPOSAL_CATEGORIES.join(', ')}.`
+            });
             return;
         }
 

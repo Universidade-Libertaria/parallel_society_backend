@@ -1,3 +1,6 @@
+export type ProposalCategory = 'Finance' | 'Operations' | 'Governance' | 'Other';
+export const PROPOSAL_CATEGORIES: ProposalCategory[] = ['Finance', 'Operations', 'Governance', 'Other'];
+
 export interface AuthNonceRequest {
     address: string;
 }
@@ -16,7 +19,7 @@ export interface AuthResponse {
 export interface Proposal {
     id?: string;
     title: string;
-    category: string;
+    category: ProposalCategory;
     description: string;
     authorAddress: string;
     authorName?: string;
@@ -66,7 +69,7 @@ export interface Vote {
 
 export interface CreateProposalRequest {
     title: string;
-    category: string;
+    category: ProposalCategory;
     description: string;
     startTime?: number;
     endTime?: number;
