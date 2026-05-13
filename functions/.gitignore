@@ -4,4 +4,5 @@ node_modules/
 *.log
 firebase-debug.log
 .env
+.env.staging
 .DS_Store
