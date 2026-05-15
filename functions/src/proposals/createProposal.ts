@@ -137,7 +137,7 @@ export const createProposal = functions.https.onRequest(async (req, res) => {
             tokenPowerVotedRaw: '0',
             totalVoters: 0,
             snapshotBlock,
-            snapshotChainId: 30, // RSK Mainnet
+            snapshotChainId: 31, // RSK Testnet
             strategy: 'lut-erc20-balance@block',
             proposalCidStatus: 'pending',
             signature: body.signature,
