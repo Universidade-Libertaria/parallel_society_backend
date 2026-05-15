@@ -3,7 +3,8 @@ import * as dotenv from 'dotenv';
 dotenv.config();
 
 export const provider = new ethers.JsonRpcProvider(process.env.RSK_RPC_URL);
-const LUT_TOKEN_ADDRESS = process.env.LUT_TOKEN_ADDRESS || '';
+const RAW_LUT_ADDRESS = process.env.LUT_TOKEN_ADDRESS || '';
+const LUT_TOKEN_ADDRESS = RAW_LUT_ADDRESS ? ethers.getAddress(RAW_LUT_ADDRESS.trim().toLowerCase()) : '';
 const LUT_TOKEN_DECIMALS = parseInt(process.env.LUT_TOKEN_DECIMALS || '18');
 
 const ERC20_ABI = [
