@@ -37,6 +37,12 @@ export const addProposalUpdate = functions.https.onRequest(async (req, res) => {
             return;
         }
 
+        const attachments = (req.body as { attachments?: unknown }).attachments;
+        if (Array.isArray(attachments) ? attachments.length > 0 : attachments !== undefined) {
+            res.status(400).json({ error: 'Proposal update attachments are no longer supported' });
+            return;
+        }
+
         // 2. Verify Proposal Ownership
         const proposalRef = db.collection('proposals').doc(body.proposalId);
         const proposalDoc = await proposalRef.get();
@@ -52,13 +58,17 @@ export const addProposalUpdate = functions.https.onRequest(async (req, res) => {
             return;
         }
 
+        if (proposalData.status !== 'PASSED') {
+            res.status(403).json({ error: 'Proposal updates are only allowed for passed proposals' });
+            return;
+        }
+
         // 3. Create Update
         const updateData: ProposalUpdate = {
             proposalId: body.proposalId,
             authorAddress: lowerAuthorAddress,
             status: body.status,
             content: body.content,
-            attachments: body.attachments || [],
             createdAt: admin.firestore.Timestamp.now()
         };
 

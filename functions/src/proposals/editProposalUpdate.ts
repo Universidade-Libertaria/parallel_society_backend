@@ -1,7 +1,7 @@
 import * as functions from 'firebase-functions';
 import { db } from '../firebase';
 import { verifyAuthToken } from '../services/auth';
-import { ProposalUpdate } from '../types';
+import { Proposal, ProposalUpdate } from '../types';
 
 export const editProposalUpdate = functions.https.onRequest(async (req, res) => {
     // CORS Header
@@ -55,11 +55,33 @@ export const editProposalUpdate = functions.https.onRequest(async (req, res) => 
             return;
         }
 
+        const proposalDoc = await db.collection('proposals').doc(updateData.proposalId).get();
+        if (!proposalDoc.exists) {
+            res.status(404).json({ error: 'Proposal not found' });
+            return;
+        }
+
+        const proposalData = proposalDoc.data() as Proposal;
+        if (proposalData.status !== 'PASSED') {
+            res.status(403).json({ error: 'Proposal updates are only allowed for passed proposals' });
+            return;
+        }
+
+        const attachments = (body as { attachments?: unknown }).attachments;
+        if (Array.isArray(attachments) ? attachments.length > 0 : attachments !== undefined) {
+            res.status(400).json({ error: 'Proposal update attachments are no longer supported' });
+            return;
+        }
+
         // 3. Update Fields
         const updates: Partial<ProposalUpdate> = {};
         if (body.status) updates.status = body.status;
         if (body.content) updates.content = body.content;
-        if (body.attachments) updates.attachments = body.attachments;
+
+        if (Object.keys(updates).length === 0) {
+            res.status(400).json({ error: 'No editable fields provided' });
+            return;
+        }
 
         // Add updated timestamp if desired, though not in original type
         // updates.updatedAt = admin.firestore.Timestamp.now();

@@ -55,8 +55,7 @@ export const getProposalUpdates = functions.https.onRequest(async (req, res) => 
                 authorName: authorName,
                 status: data.status,
                 content: data.content,
-                createdAt: data.createdAt.toMillis(), // Convert Timestamp to number
-                attachments: data.attachments || []
+                createdAt: data.createdAt.toMillis() // Convert Timestamp to number
             });
         }
 
