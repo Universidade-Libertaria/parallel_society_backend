@@ -1,11 +1,13 @@
 import * as functions from 'firebase-functions';
 import { db } from '../firebase';
+import { CONFIG } from '../config';
 import { verifyAuthToken } from '../services/auth';
 import { getLUTBalance, provider } from '../services/lutBalance';
 import { CreateProposalRequest, Proposal, ProposalCategory, PROPOSAL_CATEGORIES } from '../types';
 import * as admin from 'firebase-admin';
 import { verifyProposalSignature, EIP712_DOMAIN, EIP712_TYPES, ProposalMessage } from '../services/eip712';
 import { ipfsRpc } from '../services/ipfsRpc';
+import { validateProposalBody } from './validators';
 
 export const createProposal = functions.https.onRequest(async (req, res) => {
     // CORS Header
@@ -62,9 +64,10 @@ export const createProposal = functions.https.onRequest(async (req, res) => {
         console.log('Validating proposal body:', body);
 
         // 3. Validate Body
-        if (!body.title || !body.category || !body.description || !body.signature || !body.messageHash || !body.timestamp || !body.snapshotBlock) {
-            console.warn('Missing required fields');
-            res.status(400).json({ error: 'Missing required fields (including signature/hash/timestamp)' });
+        const validation = validateProposalBody(body);
+        if (!validation.valid) {
+            console.warn('Validation error:', validation.error);
+            res.status(400).json({ error: validation.error });
             return;
         }
 
@@ -137,7 +140,7 @@ export const createProposal = functions.https.onRequest(async (req, res) => {
             tokenPowerVotedRaw: '0',
             totalVoters: 0,
             snapshotBlock,
-            snapshotChainId: 30, // RSK Mainnet
+            snapshotChainId: CONFIG.CHAIN_ID, // RSK Mainnet
             strategy: 'lut-erc20-balance@block',
             proposalCidStatus: 'pending',
             signature: body.signature,
@@ -150,39 +153,54 @@ export const createProposal = functions.https.onRequest(async (req, res) => {
         const proposalId = docRef.id;
         console.log(`Proposal created in Firestore with ID: ${proposalId}`);
 
-        // 8. IPFS Pinning
-        try {
-            console.log(`[createProposal] Preparing IPFS envelope...`);
-            const envelope = {
-                address: authorAddress.toLowerCase(),
-                sig: body.signature,
-                hash: body.messageHash,
-                data: {
-                    domain: EIP712_DOMAIN,
-                    types: {
-                        Proposal: EIP712_TYPES.Proposal
-                    },
-                    message: proposalMessage
+        // 8. IPFS Pinning with Retry
+        const MAX_RETRIES = 3;
+        let cid: string | undefined;
+        let lastError: Error | undefined;
+
+        for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+            try {
+                console.log(`[createProposal] Preparing IPFS envelope (Attempt ${attempt}/${MAX_RETRIES})...`);
+                const envelope = {
+                    address: authorAddress.toLowerCase(),
+                    sig: body.signature,
+                    hash: body.messageHash,
+                    data: {
+                        domain: EIP712_DOMAIN,
+                        types: {
+                            Proposal: EIP712_TYPES.Proposal
+                        },
+                        message: proposalMessage
+                    }
+                };
+
+                console.log(`[createProposal] Calling ipfsRpc.pinJson for proposal: ${proposalId}`);
+                cid = await ipfsRpc.pinJson(envelope);
+                console.log(`[createProposal] Proposal CID generated: ${cid}`);
+                break; // Success, exit loop
+            } catch (ipfsError: any) {
+                console.warn(`[createProposal] IPFS pinning attempt ${attempt} failed: ${ipfsError.message}`);
+                lastError = ipfsError;
+                if (attempt < MAX_RETRIES) {
+                    await new Promise(resolve => setTimeout(resolve, 1000 * attempt)); // Exponentialish backoff
                 }
-            };
+            }
+        }
 
-            console.log(`[createProposal] Calling ipfsRpc.pinJson for proposal: ${proposalId}`);
-            const cid = await ipfsRpc.pinJson(envelope);
-            console.log(`[createProposal] Proposal CID generated: ${cid}`);
-
+        if (cid) {
             await db.collection('proposals').doc(proposalId).update({
                 proposalCid: cid,
                 proposalCidPinnedAt: admin.firestore.Timestamp.now(),
                 proposalCidStatus: 'pinned'
             });
             console.log(`[createProposal] Firestore updated with CID for ${proposalId}`);
-        } catch (ipfsError: any) {
-            console.error(`[createProposal] IPFS pinning CRITICAL failure for ${proposalId}:`, ipfsError.message);
-            if (ipfsError.stack) console.error(ipfsError.stack);
+        } else {
+            console.error(`[createProposal] IPFS pinning CRITICAL failure for ${proposalId} after ${MAX_RETRIES} attempts:`, lastError?.message);
+            if (lastError?.stack) console.error(lastError.stack);
 
             await db.collection('proposals').doc(proposalId).update({
                 proposalCidStatus: 'failed',
-                ipfsError: ipfsError.message // Store error for debugging
+                ipfsError: lastError?.message // Store error for debugging
             });
         }
 

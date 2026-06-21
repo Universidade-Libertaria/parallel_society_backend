@@ -1,12 +1,13 @@
 import { ethers } from 'ethers';
+import { CONFIG } from '../config';
 
 /**
  * EIP-712 Domain for Parallel Society Governance
  * Matching Snapshot-style domain
  */
 export const EIP712_DOMAIN = {
-    name: 'parallel',
-    version: '1'
+    name: CONFIG.EIP712.DOMAIN_NAME,
+    version: CONFIG.EIP712.DOMAIN_VERSION
 };
 
 /**
